@@ -20,22 +20,22 @@ public class TrainService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    // Find all trains that have both stations in order
+    // Find all trains that have both stations in order using a native SQL query for reliability
     public List<Train> findTrainsByStations(String from, String to) {
-        List<Train> allTrains = trainRepository.findAll();
-        List<Train> result = new ArrayList<>();
-        for (Train train : allTrains) {
-            List<TrainRoute> route = trainRouteRepository.findByTrainNumberOrderByStopNumberAsc(train.getTrainNumber());
-            int fromIdx = -1, toIdx = -1;
-            for (int i = 0; i < route.size(); i++) {
-                if (route.get(i).getStationName().toLowerCase().contains(from.toLowerCase())) fromIdx = i;
-                if (route.get(i).getStationName().toLowerCase().contains(to.toLowerCase())) toIdx = i;
-            }
-            if (fromIdx != -1 && toIdx != -1 && fromIdx < toIdx) {
-                result.add(train);
-            }
-        }
-        return result;
+        String fromCode = from.trim().toUpperCase();
+        String toCode = to.trim().toUpperCase();
+        // Native SQL: find train_numbers where fromStation stop_number < toStation stop_number
+        String sql = "SELECT tr1.train_number FROM train_route tr1 " +
+                "JOIN train_route tr2 ON tr1.train_number = tr2.train_number " +
+                "WHERE tr1.station_code = :fromCode AND tr2.station_code = :toCode AND tr1.stop_number < tr2.stop_number";
+        List<String> trainNumbers = entityManager.createNativeQuery(sql)
+                .setParameter("fromCode", fromCode)
+                .setParameter("toCode", toCode)
+                .getResultList();
+        System.out.println("[DEBUG] findTrainsByStations from: " + fromCode + ", to: " + toCode + ", found: " + trainNumbers);
+        if (trainNumbers.isEmpty()) return new ArrayList<>();
+        // Fetch Train entities for these trainNumbers
+        return trainRepository.findAllById(trainNumbers);
     }
 
     // Get full route for a train
@@ -52,12 +52,15 @@ public class TrainService {
     }
 
     public Optional<Train> getTrain(String trainNumber) {
-        System.out.println("Looking for train: [" + trainNumber + "]");
-        List<Train> result = entityManager.createNativeQuery(
-            "SELECT * FROM train WHERE train_number = ?", Train.class)
-            .setParameter(1, trainNumber)
-            .getResultList();
-        System.out.println("Native query found: " + !result.isEmpty());
-        return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
+        String trimmed = trainNumber.trim();
+        System.out.println("Looking for train: [" + trimmed + "]");
+        Optional<Train> train = trainRepository.findById(trimmed);
+        System.out.println("Repository found: " + train.isPresent());
+        return train;
+    }
+
+    // Get all trains for testing
+    public List<Train> getAllTrains() {
+        return trainRepository.findAll();
     }
 } 

@@ -44,9 +44,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         .setSigningKey(jwtSecret)
                         .parseClaimsJws(token)
                         .getBody();
-                // Set authentication in the context
+                // Extract role and set as authority
+                String role = claims.get("role", String.class);
+                java.util.List<org.springframework.security.core.GrantedAuthority> authorities =
+                    java.util.Collections.singletonList(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role)
+                    );
                 UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(claims.getSubject(), null, Collections.emptyList());
+                    new UsernamePasswordAuthenticationToken(claims.getSubject(), null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (Exception e) {
                 response.setStatus(HttpStatus.UNAUTHORIZED.value());

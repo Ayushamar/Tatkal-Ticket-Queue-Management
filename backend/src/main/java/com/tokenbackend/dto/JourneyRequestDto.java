@@ -12,7 +12,8 @@ import java.util.List;
 public class JourneyRequestDto {
     private String aadhaarNo;
     private String station;
-    private LocalDate journeyDate;
+    private String toStation;
+    private String journeyDate;
     private String trainNo;
     private List<String> coPassengers;
 } 

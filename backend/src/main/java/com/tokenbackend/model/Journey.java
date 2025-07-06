@@ -35,6 +35,9 @@ public class Journey {
     @Column(name = "token_no", unique = true)
     private Integer tokenNo;
     
+    @Column(name = "token_issue_date", nullable = false)
+    private LocalDate tokenIssueDate;
+    
     @Column(name = "counter_no")
     private Integer counterNo;
     
@@ -43,6 +46,9 @@ public class Journey {
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+    
+    @Column(name = "to_station", length = 100)
+    private String toStation;
     
     @OneToMany(mappedBy = "journey", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<CoPassenger> coPassengers;

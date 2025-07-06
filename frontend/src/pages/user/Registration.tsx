@@ -1,7 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
-import { Plus, Trash2, Send, CheckCircle, User, Users } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Send,
+  CheckCircle,
+  User,
+  Users,
+  Search,
+  AlertCircle,
+} from "lucide-react";
 import { useUser } from "../../contexts/UserContext";
 import toast from "react-hot-toast";
 import { apiClient } from "../../utils/api";
@@ -127,11 +136,6 @@ function maskMobile(mobile: string) {
   return mobile && mobile.length === 10 ? `XXXXXX${mobile.slice(-4)}` : mobile;
 }
 
-function extractCode(stationLabel: string) {
-  const match = stationLabel.match(/\(([^)]+)\)$/);
-  return match ? match[1] : stationLabel;
-}
-
 export default function Registration() {
   const [step, setStep] = useState(1);
   const [otpSent, setOtpSent] = useState(false);
@@ -143,8 +147,11 @@ export default function Registration() {
   const [viewMember, setViewMember] = useState<any>(null);
   const [mainPersonDetails, setMainPersonDetails] = useState<any>(null);
   const [trainName, setTrainName] = useState("");
-  const [trainOptions, setTrainOptions] = useState<any[]>([]);
-  const [showTrainDropdown, setShowTrainDropdown] = useState(false);
+  const [trainLoading, setTrainLoading] = useState(false);
+  const [trainError, setTrainError] = useState("");
+  const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(
+    null
+  );
 
   const {
     register,
@@ -152,46 +159,97 @@ export default function Registration() {
     watch,
     formState: { errors },
     setValue,
-  } = useForm<FormData>();
+  } = useForm<FormData>({
+    defaultValues: {
+      fromStation: "",
+      toStation: "",
+      trainNumber: "",
+    },
+  });
   const { userData, setUserData } = useUser();
   const navigate = useNavigate();
 
   const watchedAadhaar = watch("aadhaar");
-  const watchedFrom = watch("fromStation");
-  const watchedTo = watch("toStation");
   const watchedTrainNumber = watch("trainNumber");
 
-  // Auto-fill Train Number/Name when From and To are selected
-  useEffect(() => {
-    if (watchedFrom && watchedTo) {
-      apiClient.getTrainsByStations(watchedFrom, watchedTo).then((trains) => {
-        if (trains.length === 1) {
-          setValue("trainNumber", trains[0].trainNumber);
-          setTrainName(trains[0].trainName);
-          setShowTrainDropdown(false);
-        } else if (trains.length > 1) {
-          setTrainOptions(trains);
-          setShowTrainDropdown(true);
-        } else {
-          setTrainName("");
-          setShowTrainDropdown(false);
-        }
-      });
+  // Debounced function to fetch train details
+  const fetchTrainDetails = useCallback(async (trainNumber: string) => {
+    if (!trainNumber || trainNumber.length !== 5) {
+      setTrainName("");
+      setTrainError("");
+      return;
     }
-  }, [watchedFrom, watchedTo, setValue]);
 
-  // Auto-fill From/To/Train Name when Train Number is selected
-  useEffect(() => {
-    if (watchedTrainNumber) {
-      apiClient.getTrainRoute(watchedTrainNumber).then((data) => {
-        if (data && data.route && data.route.length > 1) {
-          setValue("fromStation", data.route[0].code);
-          setValue("toStation", data.route[data.route.length - 1].code);
-          setTrainName(data.trainName);
-        }
-      });
+    setTrainLoading(true);
+    setTrainError("");
+
+    try {
+      const data = await apiClient.getTrainRoute(trainNumber);
+
+      if (data && data.trainName) {
+        setTrainName(data.trainName);
+        setTrainError("");
+        toast.success(`Train ${data.trainName} found!`);
+      } else {
+        setTrainName("");
+        setTrainError("No train found with this number");
+        toast.error("No train found with this number");
+      }
+    } catch (error) {
+      console.error("Error fetching train details:", error);
+      setTrainName("");
+      setTrainError("Failed to fetch train details. Please try again.");
+      toast.error("Failed to fetch train details");
+    } finally {
+      setTrainLoading(false);
     }
-  }, [watchedTrainNumber, setValue]);
+  }, []);
+
+  // Handle train number input with debouncing
+  const handleTrainNumberChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+
+      // Clear previous timer
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+
+      // Set new timer for debouncing (500ms delay)
+      const timer = setTimeout(() => {
+        fetchTrainDetails(value);
+      }, 500);
+
+      setDebounceTimer(timer);
+    },
+    [debounceTimer, fetchTrainDetails]
+  );
+
+  // Handle train number blur (immediate fetch)
+  const handleTrainNumberBlur = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+
+      // Clear any pending timer
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        setDebounceTimer(null);
+      }
+
+      // Fetch immediately on blur
+      fetchTrainDetails(value);
+    },
+    [debounceTimer, fetchTrainDetails]
+  );
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+    };
+  }, [debounceTimer]);
 
   const sendOTP = async () => {
     if (!watchedAadhaar || watchedAadhaar.length !== 12) {
@@ -249,10 +307,15 @@ export default function Registration() {
     setLoading(true);
     const payload = {
       aadhaarNo: data.aadhaar,
-      station: data.fromStation, // or use a single station field if your UI allows
+      station: data.fromStation, // fromStation selected by user
+      toStation: data.toStation, // toStation selected by user
       journeyDate: data.journeyDate,
       trainNo: data.trainNumber,
-      coPassengers: coPassengers.map((cp) => cp.aadhaar),
+      coPassengers: coPassengers
+        .map((cp) => cp.aadhaar)
+        .filter(
+          (aadhaar) => typeof aadhaar === "string" && aadhaar.length === 12
+        ),
     };
     try {
       const result = await apiClient.createJourney(payload);
@@ -415,7 +478,21 @@ export default function Registration() {
                     required: "Journey date is required",
                   })}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  min={new Date().toISOString().split("T")[0]}
+                  min={
+                    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  max={
+                    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
+                  defaultValue={
+                    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0]
+                  }
                 />
                 {errors.journeyDate && (
                   <p className="text-red-500 text-sm mt-1">
@@ -428,41 +505,62 @@ export default function Registration() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Train Number *
                 </label>
-                <input
-                  type="text"
-                  {...register("trainNumber", {
-                    required: "Train number is required",
-                  })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., 12001"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    {...register("trainNumber", {
+                      required: "Train number is required",
+                      pattern: {
+                        value: /^\d{5}$/,
+                        message: "Train number must be exactly 5 digits",
+                      },
+                    })}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10 ${
+                      trainError ? "border-red-500" : "border-gray-300"
+                    }`}
+                    placeholder="e.g., 09050"
+                    maxLength={5}
+                    onChange={(e) => {
+                      register("trainNumber").onChange(e);
+                      handleTrainNumberChange(e);
+                    }}
+                    onBlur={handleTrainNumberBlur}
+                    autoComplete="off"
+                  />
+                  {trainLoading && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                    </div>
+                  )}
+                  {!trainLoading &&
+                    watchedTrainNumber &&
+                    watchedTrainNumber.length === 5 &&
+                    !trainError && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <Search className="h-5 w-5 text-green-500" />
+                      </div>
+                    )}
+                  {trainError && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <AlertCircle className="h-5 w-5 text-red-500" />
+                    </div>
+                  )}
+                </div>
                 {errors.trainNumber && (
                   <p className="text-red-500 text-sm mt-1">
                     {errors.trainNumber.message}
                   </p>
                 )}
-                {showTrainDropdown && trainOptions.length > 1 && (
-                  <select
-                    className="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg"
-                    onChange={(e) => {
-                      const selected = trainOptions.find(
-                        (t) => t.trainNumber === e.target.value
-                      );
-                      setValue("trainNumber", selected.trainNumber);
-                      setTrainName(selected.trainName);
-                      setShowTrainDropdown(false);
-                    }}
-                    defaultValue=""
-                  >
-                    <option value="" disabled>
-                      Select a train
-                    </option>
-                    {trainOptions.map((opt) => (
-                      <option key={opt.trainNumber} value={opt.trainNumber}>
-                        {opt.trainNumber} - {opt.trainName}
-                      </option>
-                    ))}
-                  </select>
+                {trainError && (
+                  <p className="text-red-500 text-sm mt-1 flex items-center">
+                    <AlertCircle className="h-4 w-4 mr-1" />
+                    {trainError}
+                  </p>
+                )}
+                {trainLoading && (
+                  <p className="text-blue-500 text-sm mt-1">
+                    Searching for train details...
+                  </p>
                 )}
               </div>
             </div>
@@ -476,9 +574,23 @@ export default function Registration() {
                   type="text"
                   value={trainName}
                   readOnly
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Train name will be auto-filled"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    trainName
+                      ? "bg-green-50 border-green-300 text-green-800"
+                      : "bg-gray-100 border-gray-300"
+                  }`}
+                  placeholder={
+                    trainLoading
+                      ? "Searching..."
+                      : "Train name will be auto-filled"
+                  }
                 />
+                {trainName && (
+                  <p className="text-green-600 text-xs mt-1 flex items-center">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Auto-filled from train number
+                  </p>
+                )}
               </div>
 
               <div>
@@ -493,7 +605,10 @@ export default function Registration() {
                 >
                   <option value="">Select station</option>
                   {stations.map((station) => (
-                    <option key={station.code} value={station.code}>
+                    <option
+                      key={station.code}
+                      value={station.code.trim().toUpperCase()}
+                    >
                       {station.name} ({station.code})
                     </option>
                   ))}
@@ -517,7 +632,10 @@ export default function Registration() {
                 >
                   <option value="">Select station</option>
                   {stations.map((station) => (
-                    <option key={station.code} value={station.code}>
+                    <option
+                      key={station.code}
+                      value={station.code.trim().toUpperCase()}
+                    >
                       {station.name} ({station.code})
                     </option>
                   ))}

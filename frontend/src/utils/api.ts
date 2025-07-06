@@ -144,6 +144,134 @@ export const apiClient = {
     return response.data;
   },
 
+  async getActiveCounters() {
+    const response = await axios.get(`${API_BASE_URL}/admin/counters/active`);
+    return response.data;
+  },
+
+  async createCounter(counterData: any) {
+    const response = await axios.post(
+      `${API_BASE_URL}/admin/counters`,
+      counterData
+    );
+    return response.data;
+  },
+
+  async updateCounter(counterId: number, counterData: any) {
+    const response = await axios.put(
+      `${API_BASE_URL}/admin/counters/${counterId}`,
+      counterData
+    );
+    return response.data;
+  },
+
+  async deleteCounter(counterId: number) {
+    const response = await axios.delete(
+      `${API_BASE_URL}/admin/counters/${counterId}`
+    );
+    return response.data;
+  },
+
+  async assignStaffToCounter(counterId: number, staffId: string) {
+    const response = await axios.put(
+      `${API_BASE_URL}/admin/counters/${counterId}/assign-staff?staffId=${staffId}`
+    );
+    return response.data;
+  },
+
+  // Staff Management
+  async getStaff() {
+    const response = await axios.get(`${API_BASE_URL}/admin/staff`);
+    return response.data;
+  },
+
+  async getActiveStaff() {
+    const response = await axios.get(`${API_BASE_URL}/admin/staff/active`);
+    return response.data;
+  },
+
+  async createStaff(staffData: any) {
+    const response = await axios.post(`${API_BASE_URL}/admin/staff`, staffData);
+    return response.data;
+  },
+
+  async updateStaff(staffId: string, staffData: any) {
+    const response = await axios.put(
+      `${API_BASE_URL}/admin/staff/${staffId}`,
+      staffData
+    );
+    return response.data;
+  },
+
+  async deleteStaff(staffId: string) {
+    const response = await axios.delete(
+      `${API_BASE_URL}/admin/staff/${staffId}`
+    );
+    return response.data;
+  },
+
+  // Token Rules
+  async getTokenRules() {
+    const response = await axios.get(`${API_BASE_URL}/admin/rules`);
+    return response.data;
+  },
+
+  async getActiveTokenRules() {
+    const response = await axios.get(`${API_BASE_URL}/admin/rules/active`);
+    return response.data;
+  },
+
+  async createTokenRule(ruleData: any) {
+    const response = await axios.post(`${API_BASE_URL}/admin/rules`, ruleData);
+    return response.data;
+  },
+
+  async updateTokenRule(ruleId: number, ruleData: any) {
+    const response = await axios.put(
+      `${API_BASE_URL}/admin/rules/${ruleId}`,
+      ruleData
+    );
+    return response.data;
+  },
+
+  async deleteTokenRule(ruleId: number) {
+    const response = await axios.delete(
+      `${API_BASE_URL}/admin/rules/${ruleId}`
+    );
+    return response.data;
+  },
+
+  // Reports
+  async getDashboardStats() {
+    const response = await axios.get(`${API_BASE_URL}/admin/reports/dashboard`);
+    return response.data;
+  },
+
+  async getDailySummary(date?: string) {
+    const params = date ? { date } : {};
+    const response = await axios.get(
+      `${API_BASE_URL}/admin/reports/daily-summary`,
+      { params }
+    );
+    return response.data;
+  },
+
+  async getCounterPerformance(date?: string) {
+    const params = date ? { date } : {};
+    const response = await axios.get(
+      `${API_BASE_URL}/admin/reports/counter-performance`,
+      { params }
+    );
+    return response.data;
+  },
+
+  async getQueueStatus() {
+    const response = await axios.get(
+      `${API_BASE_URL}/admin/reports/queue-status`
+    );
+    return response.data;
+  },
+
   async getTrainsByStations(from: string, to: string) {
     const response = await axios.get(`${API_BASE_URL}/trains`, {
       params: { from, to },

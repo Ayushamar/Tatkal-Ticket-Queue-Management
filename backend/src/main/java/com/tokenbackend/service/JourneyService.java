@@ -11,6 +11,7 @@ import com.tokenbackend.repository.CoPassengerRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -29,32 +30,44 @@ public class JourneyService {
     
     @Transactional
     public JourneyResponseDto createJourney(JourneyRequestDto request) {
+        // Parse journeyDate from String to LocalDate
+        LocalDate journeyDate;
+        try {
+            journeyDate = LocalDate.parse(request.getJourneyDate());
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid journeyDate format. Expected yyyy-MM-dd");
+        }
+        // Validate journey date (must be today + 2)
+        LocalDate today = LocalDate.now();
+        LocalDate allowedJourneyDate = today.plusDays(2);
+        
+        if (!journeyDate.equals(allowedJourneyDate)) {
+            throw new RuntimeException("Journey date must be " + allowedJourneyDate + " (2 days from today)");
+        }
+        
         // Get main passenger
         Optional<Person> mainPerson = personRepository.findByAadhaarNo(request.getAadhaarNo());
         if (mainPerson.isEmpty()) {
             throw new RuntimeException("Main passenger not found");
         }
         
-        // Assign counter based on gender
-        Integer counterNo = assignCounter(mainPerson.get().getGender());
+        // Get next token number for today (FIFO for the day)
+        Integer tokenNo = getNextTokenNoForToday();
         
-        // Calculate next token number for the journey date (FIFO for the day)
-        Long currentTokenCount = journeyRepository.countByJourneyDate(request.getJourneyDate());
-        int tokenNo = currentTokenCount.intValue() + 1;
-
-        // Calculate counter position (FIFO for the counter and day)
-        Long currentPosition = journeyRepository.countByCounterNoAndJourneyDate(counterNo, request.getJourneyDate());
-        int counterPosition = currentPosition.intValue() + 1;
-
+        // Assign counter and position based on gender and arrival order
+        CounterAssignment assignment = assignCounterAndPosition(mainPerson.get().getGender());
+        
         // Create journey
         Journey journey = new Journey();
         journey.setMainAadhaar(mainPerson.get());
         journey.setStation(request.getStation());
-        journey.setJourneyDate(request.getJourneyDate());
+        journey.setToStation(request.getToStation());
+        journey.setJourneyDate(journeyDate);
         journey.setTrainNo(request.getTrainNo());
-        journey.setCounterNo(counterNo);
-        journey.setCounterPosition(counterPosition);
         journey.setTokenNo(tokenNo);
+        journey.setTokenIssueDate(today);
+        journey.setCounterNo(assignment.counterNo);
+        journey.setCounterPosition(assignment.position);
         
         // Save journey
         Journey savedJourney = journeyRepository.save(journey);
@@ -85,16 +98,47 @@ public class JourneyService {
         );
     }
     
-    private Integer assignCounter(String gender) {
+    private Integer getNextTokenNoForToday() {
+        LocalDate today = LocalDate.now();
+        Optional<Integer> maxTokenNo = journeyRepository.findMaxTokenNoForDate(today);
+        return maxTokenNo.orElse(0) + 1;
+    }
+    
+    private CounterAssignment assignCounterAndPosition(String gender) {
+        LocalDate today = LocalDate.now();
+        
         if ("Female".equals(gender)) {
-            return 5;
+            // Female passengers go to counter 5
+            Integer nextPosition = journeyRepository.findMaxPositionForCounterAndDate(5, today).orElse(0) + 1;
+            return new CounterAssignment(5, nextPosition);
         } else {
-            // Round-robin assignment for males (counters 1-4)
-            long totalMaleJourneys = 0;
-            for (int i = 1; i <= 4; i++) {
-                totalMaleJourneys += journeyRepository.countByCounterNoAndJourneyDate(i, java.time.LocalDate.now());
+            // Male passengers: fill positions sequentially across counters 1-4
+            // Find the counter with the least number of passengers today
+            int counterWithLeastPassengers = 1;
+            long minPassengers = Long.MAX_VALUE;
+            
+            for (int counter = 1; counter <= 4; counter++) {
+                long passengerCount = journeyRepository.countByCounterNoAndTokenIssueDate(counter, today);
+                if (passengerCount < minPassengers) {
+                    minPassengers = passengerCount;
+                    counterWithLeastPassengers = counter;
+                }
             }
-            return (int) (totalMaleJourneys % 4) + 1;
+            
+            // Get next position for the selected counter
+            Integer nextPosition = journeyRepository.findMaxPositionForCounterAndDate(counterWithLeastPassengers, today).orElse(0) + 1;
+            return new CounterAssignment(counterWithLeastPassengers, nextPosition);
+        }
+    }
+    
+    // Helper class to return both counter and position
+    private static class CounterAssignment {
+        final Integer counterNo;
+        final Integer position;
+        
+        CounterAssignment(Integer counterNo, Integer position) {
+            this.counterNo = counterNo;
+            this.position = position;
         }
     }
     

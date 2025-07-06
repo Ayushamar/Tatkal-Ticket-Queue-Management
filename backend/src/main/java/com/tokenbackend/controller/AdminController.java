@@ -44,6 +44,7 @@ public class AdminController {
             // Generate a real JWT token
             String token = Jwts.builder()
                 .setSubject(username)
+                .claim("role", "ADMIN")
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + 86400000)) // 1 day
                 .signWith(SignatureAlgorithm.HS256, jwtSecret)
