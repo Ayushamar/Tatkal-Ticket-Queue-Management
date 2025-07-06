@@ -3,7 +3,9 @@
 
 import axios from "axios";
 
-export const API_BASE_URL = "http://localhost:8080/api";
+// Use environment variable for API URL, fallback to localhost for development
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 // Add axios interceptor for admin token
 axios.interceptors.request.use((config) => {
