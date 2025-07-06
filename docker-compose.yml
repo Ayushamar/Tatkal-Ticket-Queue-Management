@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: tatkal_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./admin_schema.sql:/docker-entrypoint-initdb.d/admin_schema.sql
+
+  backend:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/tatkal_db
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=root
+      - JWT_SECRET=your-secure-jwt-secret-key
+      - ADMIN_USERNAME=Admin
+      - ADMIN_PASSWORD=AdminMFP123
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend/pdf-tokens:/app/pdf-tokens
+
+volumes:
+  postgres_data:
