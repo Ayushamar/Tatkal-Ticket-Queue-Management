@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+DEPLOYMENT.md
+
+# Frontend (not needed for backend)
+frontend/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env*
+
+# Build artifacts (will be built inside container)
+backend/target/
+
+# PDF tokens (will be created at runtime)
+backend/pdf-tokens/ 
