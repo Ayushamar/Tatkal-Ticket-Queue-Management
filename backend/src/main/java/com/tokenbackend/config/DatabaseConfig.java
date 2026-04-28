@@ -51,7 +51,11 @@ public class DatabaseConfig {
             config.setJdbcUrl(dbUrl);
         } else {
             // Fallback for standard JDBC URL
-            config.setJdbcUrl(databaseUrl);
+            String finalUrl = databaseUrl;
+            if (finalUrl != null && !finalUrl.contains("sslmode=")) {
+                finalUrl = finalUrl.contains("?") ? finalUrl + "&sslmode=disable" : finalUrl + "?sslmode=disable";
+            }
+            config.setJdbcUrl(finalUrl);
             config.setUsername(dbUsername);
             config.setPassword(dbPassword);
         }
